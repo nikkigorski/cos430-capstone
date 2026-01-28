@@ -66,15 +66,29 @@ export async function createDoctor(doctorData) {
       doctorData.password
     );
 
+    // First, create a user account
+    const username = doctorData.email; // Use email as username
+    const [userResult] = await pool.query(`
+      INSERT INTO users (username, password, name)
+      VALUES (?, ?, ?)
+    `, [
+      username,
+      doctor.password,
+      `${doctor.first_name} ${doctor.last_name}`
+    ]);
+    
+    const userId = userResult.insertId;
+
+    // Then create the doctor record linked to the user
     const [result] = await pool.query(`
       INSERT INTO doctors
-      (first_name, last_name, email, password)
+      (user_id, first_name, last_name, email)
       VALUES (?, ?, ?, ?)
     `, [
+      userId,
       doctor.first_name,
       doctor.last_name,
-      doctor.email,
-      doctor.password
+      doctor.email
     ]);
 
     return result;
@@ -94,15 +108,29 @@ export async function createPatient(patientData) {
       patientData.password
     );
 
+    // First, create a user account
+    const username = patientData.email; // Use email as username
+    const [userResult] = await pool.query(`
+      INSERT INTO users (username, password, name)
+      VALUES (?, ?, ?)
+    `, [
+      username,
+      patient.password,
+      `${patient.first_name} ${patient.last_name}`
+    ]);
+    
+    const userId = userResult.insertId;
+
+    // Then create the patient record linked to the user
     const [result] = await pool.query(`
       INSERT INTO patients
-      (first_name, last_name, email, password)
+      (user_id, first_name, last_name, email)
       VALUES (?, ?, ?, ?)
     `, [
+      userId,
       patient.first_name,
       patient.last_name,
-      patient.email,
-      patient.password
+      patient.email
     ]);
 
     return result;
