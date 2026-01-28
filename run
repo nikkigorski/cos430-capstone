@@ -1,0 +1,166 @@
+#!/bin/bash
+
+################################################################
+# run - Healthcare App startup script
+# Starts MySQL database, backend server, and frontend
+#
+################################################################
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$SCRIPT_DIR"
+BACKEND_DIR="$PROJECT_ROOT/backend"
+FRONTEND_DIR="$PROJECT_ROOT/capstone-app"
+SCHEMA_FILE="$PROJECT_ROOT/schema.sql"
+
+# MySQL configuration
+MYSQL_USER="${MYSQL_USER:-admin}"
+MYSQL_PASS="${MYSQL_PASS:-admin}"
+
+# Check for portable Node.js from cos457 project
+PORTABLE_NODE="$HOME/cos457_course_proj/.portable/node"
+if [ -d "$PORTABLE_NODE/bin" ]; then
+    export PATH="$PORTABLE_NODE/bin:$PATH"
+fi
+
+echo "================================================================"
+echo "Starting Healthcare Application"
+echo "================================================================"
+
+# Auto-detect MySQL socket location
+socket_paths=(
+    "$HOME/mysql.sock"
+    "/tmp/mysql.sock"
+    "/var/run/mysqld/mysql.sock"
+    "/var/run/mysqld/mysqld.sock"
+)
+MYSQL_SOCKET=""
+for path in "${socket_paths[@]}"; do
+    if [ -S "$path" ] 2>/dev/null; then
+        MYSQL_SOCKET="$path"
+        break
+    fi
+done
+
+# Check if MySQL is running
+if pgrep -x "mysqld" > /dev/null; then
+    echo "[MySQL] Already running"
+else
+    echo "[MySQL] Not running. Please start MySQL first."
+    echo "        For WSL/Linux: sudo service mysql start"
+    echo "        Or use your system's MySQL service"
+    exit 1
+fi
+
+# Wait for MySQL to be ready
+echo "[MySQL] Checking connection..."
+for i in {1..10}; do
+    if [ -n "$MYSQL_SOCKET" ]; then
+        if mysql -u $MYSQL_USER -p$MYSQL_PASS -S $MYSQL_SOCKET -e "SELECT 1" &>/dev/null; then
+            echo "[MySQL] ✓ Connection successful"
+            break
+        fi
+    else
+        if mysql -u $MYSQL_USER -p$MYSQL_PASS -h localhost -e "SELECT 1" &>/dev/null; then
+            echo "[MySQL] ✓ Connection successful"
+            break
+        fi
+    fi
+    sleep 1
+done
+
+# Set up database if schema exists
+if [ -f "$SCHEMA_FILE" ]; then
+    echo "[Database] Checking if healthcare_db exists..."
+    
+    if [ -n "$MYSQL_SOCKET" ]; then
+        DB_EXISTS=$(mysql -u $MYSQL_USER -p$MYSQL_PASS -S $MYSQL_SOCKET -e "SHOW DATABASES LIKE 'healthcare_db';" 2>/dev/null | grep healthcare_db)
+    else
+        DB_EXISTS=$(mysql -u $MYSQL_USER -p$MYSQL_PASS -h localhost -e "SHOW DATABASES LIKE 'healthcare_db';" 2>/dev/null | grep healthcare_db)
+    fi
+    
+    if [ -z "$DB_EXISTS" ]; then
+        echo "[Database] Creating healthcare_db..."
+        if [ -n "$MYSQL_SOCKET" ]; then
+            mysql -u $MYSQL_USER -p$MYSQL_PASS -S $MYSQL_SOCKET < "$SCHEMA_FILE" 2>&1 | grep -v "Warning.*password"
+        else
+            mysql -u $MYSQL_USER -p$MYSQL_PASS -h localhost < "$SCHEMA_FILE" 2>&1 | grep -v "Warning.*password"
+        fi
+        
+        if [ $? -eq 0 ]; then
+            echo "[Database] ✓ Database created successfully"
+        else
+            echo "[Database] ✗ Failed to create database"
+        fi
+    else
+        echo "[Database] ✓ healthcare_db already exists"
+    fi
+fi
+
+# Function to cleanup on exit
+cleanup() {
+    echo ""
+    echo "================================================================"
+    echo "Shutting down Healthcare Application"
+    echo "================================================================"
+    
+    if [ ! -z "$BACKEND_PID" ]; then
+        echo "[Backend] Stopping server (PID: $BACKEND_PID)..."
+        kill $BACKEND_PID 2>/dev/null
+    fi
+    
+    if [ ! -z "$FRONTEND_PID" ]; then
+        echo "[Frontend] Stopping React app (PID: $FRONTEND_PID)..."
+        kill $FRONTEND_PID 2>/dev/null
+    fi
+    
+    echo "================================================================"
+    echo "Healthcare Application stopped"
+    echo "================================================================"
+    exit 0
+}
+
+# Set up trap to catch Ctrl+C
+trap cleanup SIGINT SIGTERM
+
+# Start Backend
+if [ -d "$BACKEND_DIR" ] && [ -f "$BACKEND_DIR/server.js" ]; then
+    echo "[Backend] Starting Node.js server..."
+    cd "$BACKEND_DIR"
+    npm start &
+    BACKEND_PID=$!
+    echo "[Backend] ✓ Running on http://localhost:5000 (PID: $BACKEND_PID)"
+    sleep 2
+else
+    echo "[Backend] ✗ Backend directory or server.js not found"
+    exit 1
+fi
+
+# Start Frontend
+if [ -d "$FRONTEND_DIR" ]; then
+    echo "[Frontend] Starting React development server..."
+    cd "$FRONTEND_DIR"
+    npm start &
+    FRONTEND_PID=$!
+    echo "[Frontend] ✓ Running on http://localhost:3000 (PID: $FRONTEND_PID)"
+    sleep 3
+else
+    echo "[Frontend] ✗ Frontend directory not found"
+    kill $BACKEND_PID 2>/dev/null
+    exit 1
+fi
+
+echo ""
+echo "================================================================"
+echo "Healthcare Application started successfully!"
+echo "================================================================"
+echo "MySQL:    Running"
+echo "Backend:  http://localhost:5000"
+echo "Frontend: http://localhost:3000"
+echo ""
+echo "Press Ctrl+C to stop all services"
+echo "================================================================"
+echo ""
+
+# Wait for both processes
+wait $BACKEND_PID $FRONTEND_PID

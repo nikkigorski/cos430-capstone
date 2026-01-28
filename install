@@ -1,0 +1,132 @@
+#!/bin/bash
+
+################################################################
+# install - Healthcare App dependency installation script
+# Installs Node.js dependencies for backend and frontend
+#
+################################################################
+
+set +e  # Don't exit on errors
+
+# Get the directory where this script is located
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PROJECT_ROOT="$SCRIPT_DIR"
+BACKEND_DIR="$PROJECT_ROOT/backend"
+FRONTEND_DIR="$PROJECT_ROOT/capstone-app"
+
+ERRORS=0
+
+# Check for portable Node.js from cos457 project
+PORTABLE_NODE="$HOME/cos457_course_proj/.portable/node"
+if [ -d "$PORTABLE_NODE/bin" ]; then
+    export PATH="$PORTABLE_NODE/bin:$PATH"
+    echo "[Node.js] Using portable Node.js from cos457_course_proj"
+fi
+
+echo "================================================================"
+echo "Installing Healthcare App Dependencies"
+echo "================================================================"
+echo ""
+
+# Check for Node.js
+if ! command -v node &> /dev/null; then
+    echo "[Error] Node.js not found. Please install Node.js first."
+    echo "        Visit: https://nodejs.org/"
+    echo "        Or run the cos457_course_proj install script first"
+    ERRORS=$((ERRORS + 1))
+    exit 1
+else
+    echo "[Node.js] Found: $(node --version)"
+fi
+
+# Check for npm
+if ! command -v npm &> /dev/null; then
+    echo "[Error] npm not found. Please install npm first."
+    ERRORS=$((ERRORS + 1))
+    exit 1
+else
+    echo "[npm]     Found: $(npm --version)"
+fi
+
+# Check for MySQL
+if ! command -v mysql &> /dev/null; then
+    echo "[Warning] MySQL client not found."
+    echo "          You'll need to set up the database manually."
+    ERRORS=$((ERRORS + 1))
+else
+    echo "[MySQL]   Found: $(mysql --version | head -n1)"
+fi
+
+echo ""
+echo "================================================================"
+echo "Installing Backend Dependencies"
+echo "================================================================"
+
+if [ -d "$BACKEND_DIR" ]; then
+    cd "$BACKEND_DIR"
+    echo "[Backend] Installing npm packages..."
+    npm install
+    if [ $? -eq 0 ]; then
+        echo "[Backend] ✓ Dependencies installed successfully"
+    else
+        echo "[Backend] ✗ Failed to install dependencies"
+        ERRORS=$((ERRORS + 1))
+    fi
+else
+    echo "[Error] Backend directory not found: $BACKEND_DIR"
+    ERRORS=$((ERRORS + 1))
+fi
+
+echo ""
+echo "================================================================"
+echo "Installing Frontend Dependencies"
+echo "================================================================"
+
+if [ -d "$FRONTEND_DIR" ]; then
+    cd "$FRONTEND_DIR"
+    echo "[Frontend] Installing npm packages..."
+    npm install
+    if [ $? -eq 0 ]; then
+        echo "[Frontend] ✓ Dependencies installed successfully"
+    else
+        echo "[Frontend] ✗ Failed to install dependencies"
+        ERRORS=$((ERRORS + 1))
+    fi
+else
+    echo "[Error] Frontend directory not found: $FRONTEND_DIR"
+    ERRORS=$((ERRORS + 1))
+fi
+
+echo ""
+echo "================================================================"
+echo "Database Setup"
+echo "================================================================"
+
+if command -v mysql &> /dev/null && [ -f "$PROJECT_ROOT/schema.sql" ]; then
+    echo "[Database] To set up the database, run:"
+    echo "           mysql -u YOUR_USER -p < $PROJECT_ROOT/schema.sql"
+    echo ""
+    echo "           Or the setup will be done automatically when you run ./run"
+else
+    echo "[Database] MySQL not found or schema.sql missing"
+fi
+
+echo ""
+echo "================================================================"
+echo "Installation Summary"
+echo "================================================================"
+
+if [ $ERRORS -eq 0 ]; then
+    echo "✓ Installation completed successfully!"
+    echo ""
+    echo "Next steps:"
+    echo "  1. Run './run' to start the application"
+    echo "  2. Frontend will be available at: http://localhost:3000"
+    echo "  3. Backend will be available at: http://localhost:5000"
+else
+    echo "✗ Installation completed with $ERRORS error(s)"
+    echo "  Please fix the errors above and try again"
+fi
+
+echo "================================================================"
+ls
